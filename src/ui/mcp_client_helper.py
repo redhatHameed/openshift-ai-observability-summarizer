@@ -98,7 +98,11 @@ class MCPClientHelper:
         """Parse MCP list response and extract items"""
         try:
             if result and isinstance(result, list) and len(result) > 0:
-                response_text = result[0].get("text", "")
+                first_item = result[0]
+                if isinstance(first_item, dict) and "text" in first_item:
+                    response_text = first_item["text"]
+                else:
+                    response_text = str(first_item)
                 # Normalize escaped newlines ("\\n") to real newlines so bullets split correctly
                 response_text = response_text.replace("\\n", "\n")
                 if item_prefix in response_text:
@@ -165,7 +169,11 @@ def get_model_config_mcp() -> Dict[str, Any]:
         
         result = mcp_client.call_tool_sync("get_model_config")
         if result and isinstance(result, list) and len(result) > 0:
-            response_text = result[0].get("text", "")
+            first_item = result[0]
+            if isinstance(first_item, dict) and "text" in first_item:
+                response_text = first_item["text"]
+            else:
+                response_text = str(first_item)
             
             # Parse the MCP response text back into dict format
             return parse_model_config_text(response_text)
@@ -206,7 +214,11 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
         result = mcp_client.call_tool_sync("analyze_vllm", parameters)
         
         if result and isinstance(result, list) and len(result) > 0:
-            response_text = result[0].get("text", "")
+            first_item = result[0]
+            if isinstance(first_item, dict) and "text" in first_item:
+                response_text = first_item["text"]
+            else:
+                response_text = str(first_item)
             
             # Check if response contains an error
             if "Error during analysis:" in response_text:
@@ -222,6 +234,131 @@ def analyze_vllm_mcp(model_name: str, summarize_model_id: str, start_ts: int, en
     except Exception as e:
         logger.error(f"Error analyzing vLLM metrics via MCP: {e}")
         return {}
+
+
+def calculate_metrics_mcp(metrics_data: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    """Calculate metrics statistics via MCP calculate_metrics tool."""
+    try:
+        logger.debug(f"calculate_metrics_mcp called with data keys: {list(metrics_data.keys())}")
+        if not mcp_client.check_server_health():
+            logger.debug("MCP server health check failed")
+            return {}
+        
+        # Convert metrics data to JSON string for MCP tool
+        metrics_json = json.dumps(metrics_data)
+        
+        result = mcp_client.call_tool_sync("calculate_metrics", {"metrics_data_json": metrics_json})
+        logger.debug(f"MCP call_tool_sync returned: {type(result)}, content: {result}")
+        
+        if result is not None and isinstance(result, list) and len(result) > 0:
+            # Handle different response formats
+            first_item = result[0]
+            logger.debug(f"MCP calculate_metrics result first_item type: {type(first_item)}")
+            
+            if isinstance(first_item, dict) and "text" in first_item:
+                response_text = first_item["text"]
+                logger.debug(f"Extracted response_text length: {len(response_text)}")
+                logger.debug(f"Response text content: {response_text[:200]}...")
+                
+                # Parse JSON response from MCP tool
+                try:
+                    parsed_json = json.loads(response_text)
+                    logger.debug(f"Successfully parsed JSON, type: {type(parsed_json)}")
+                    
+                    if isinstance(parsed_json, dict):
+                        calculated_metrics = parsed_json.get("calculated_metrics", {})
+                        logger.debug(f"Successfully extracted calculated_metrics with {len(calculated_metrics)} items")
+                        return calculated_metrics
+                    elif isinstance(parsed_json, list):
+                        # Handle case where JSON contains a list (double-encoded MCP response)
+                        logger.debug(f"JSON returned a list (double-encoded response): {parsed_json}")
+                        
+                        # Try to extract the actual content if it's a double-encoded MCP response
+                        if (len(parsed_json) > 0 and 
+                            isinstance(parsed_json[0], dict) and 
+                            "text" in parsed_json[0]):
+                            
+                            inner_text = parsed_json[0]["text"]
+                            logger.debug(f"Found double-encoded response, trying to parse inner text: {inner_text[:100]}...")
+                            
+                            try:
+                                inner_json = json.loads(inner_text)
+                                if isinstance(inner_json, dict):
+                                    calculated_metrics = inner_json.get("calculated_metrics", {})
+                                    logger.debug(f"Successfully extracted from double-encoded response: {len(calculated_metrics)} items")
+                                    return calculated_metrics
+                            except json.JSONDecodeError:
+                                logger.error(f"Failed to parse inner JSON from double-encoded response")
+                        
+                        logger.error(f"Could not handle list response format: {parsed_json}")
+                        return {}
+                    else:
+                        logger.error(f"JSON parsing returned unexpected type {type(parsed_json)}, expected dict")
+                        return {}
+                        
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON: {e}")
+                    logger.error(f"Response text was: {response_text[:500]}")
+                    return {}
+            else:
+                logger.error(f"MCP response missing 'text' field: {first_item}")
+                return {}
+        
+        logger.debug("No valid result from MCP calculate_metrics tool")
+        return {}
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"Error calculating metrics via MCP: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        
+        # Fallback to local calculation when MCP fails
+        return calculate_metrics_locally(metrics_data)
+
+
+def calculate_metrics_locally(metrics_data: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    """Calculate metrics locally using the same logic as the REST API."""
+    calculated_metrics = {}
+    
+    for label, data_points in metrics_data.items():
+        if not data_points:
+            calculated_metrics[label] = {
+                "avg": None,
+                "min": None,
+                "max": None,
+                "latest": None,
+                "count": 0
+            }
+            continue
+            
+        # Extract values from data points
+        values = []
+        for point in data_points:
+            if isinstance(point, dict) and "value" in point:
+                try:
+                    value = float(point["value"])
+                    values.append(value)
+                except (ValueError, TypeError):
+                    continue
+                    
+        if values:
+            calculated_metrics[label] = {
+                "avg": sum(values) / len(values),
+                "min": min(values),
+                "max": max(values), 
+                "latest": values[-1],
+                "count": len(values)
+            }
+        else:
+            calculated_metrics[label] = {
+                "avg": None,
+                "min": None,
+                "max": None,
+                "latest": None,
+                "count": 0
+            }
+    
+    return calculated_metrics
 
 
 def parse_analyze_response(response_text: str) -> Dict[str, Any]:
@@ -285,8 +422,30 @@ def parse_analyze_response(response_text: str) -> Dict[str, Any]:
             # Fallback: use the full response as summary if no structured sections found
             result["llm_summary"] = actual_text
         
-        # Extract some basic metrics info for the metrics dict (optional)
+        # Check if response contains structured data
         metrics = {}
+        if "STRUCTURED_DATA:" in actual_text:
+            try:
+                # Extract the JSON data after STRUCTURED_DATA:
+                structured_start = actual_text.find("STRUCTURED_DATA:") + len("STRUCTURED_DATA:")
+                json_data = actual_text[structured_start:].strip()
+                
+                parsed_structured = json.loads(json_data)
+                if isinstance(parsed_structured, dict):
+                    # Override with structured data if available
+                    if "health_prompt" in parsed_structured:
+                        result["health_prompt"] = parsed_structured["health_prompt"]
+                    if "llm_summary" in parsed_structured:
+                        result["llm_summary"] = parsed_structured["llm_summary"]
+                    if "metrics" in parsed_structured:
+                        result["metrics"] = parsed_structured["metrics"]
+                        logger.debug(f"Extracted structured metrics: {list(parsed_structured['metrics'].keys())}")
+                    return result
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.error(f"Failed to parse structured data: {e}")
+                # Fall back to basic parsing below
+        
+        # Fallback: Extract basic metrics info (for backward compatibility)
         if "GPU TEMPERATURE" in actual_text:
             metrics["gpu_temp_analyzed"] = "true"
         if "GPU POWER USAGE" in actual_text:

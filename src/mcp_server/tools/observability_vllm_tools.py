@@ -5,12 +5,14 @@ This module provides MCP tools for interacting with observability data:
 - list_namespaces: List monitored namespaces
 - get_model_config: Show configured LLM models for summarization
 - analyze_vllm: Analyze vLLM metrics and summarize using LLM
+- calculate_metrics: Calculate statistics for provided metrics data
 
 OpenShift-specific tools live in observability_openshift_tools.py
 """
 
 import json
 import os
+import pandas as pd
 from typing import Dict, Any, List, Optional
 
 # Import core observability services
@@ -204,11 +206,41 @@ def analyze_vllm(
             except Exception:
                 preview_lines.append(f"- {label}: error reading data")
 
+        # Convert DataFrame metrics to list format for UI consumption
+        metrics_for_ui = {}
+        for label, df in metric_dfs.items():
+            if df is not None and not df.empty and "timestamp" in df.columns and "value" in df.columns:
+                # Convert DataFrame to list of {timestamp, value} objects
+                data_points = []
+                for _, row in df.iterrows():
+                    try:
+                        # Convert timestamp to ISO format string
+                        timestamp_str = row["timestamp"].isoformat() if hasattr(row["timestamp"], "isoformat") else str(row["timestamp"])
+                        value = float(row["value"]) if pd.notna(row["value"]) else None
+                        if value is not None:
+                            data_points.append({
+                                "timestamp": timestamp_str,
+                                "value": value
+                            })
+                    except (ValueError, TypeError):
+                        continue
+                metrics_for_ui[label] = data_points
+            else:
+                metrics_for_ui[label] = []
+
+        # Create structured response with both summary and metrics data
+        structured_response = {
+            "health_prompt": prompt,
+            "llm_summary": summary,
+            "metrics": metrics_for_ui
+        }
+
         content = (
             f"Model: {model_name}\n\n"
             f"Prompt Used:\n{prompt}\n\n"
             f"Summary:\n{summary}\n\n"
-            f"Metrics Preview (latest values):\n" + "\n".join(preview_lines)
+            f"Metrics Preview (latest values):\n" + "\n".join(preview_lines) +
+            f"\n\nSTRUCTURED_DATA:\n{json.dumps(structured_response)}"
         )
 
         return _resp(content)
@@ -216,3 +248,81 @@ def analyze_vllm(
         return _resp(f"Error during analysis: {str(e)}", is_error=True)
 
 
+def calculate_metrics(
+    metrics_data_json: str,
+) -> List[Dict[str, Any]]:
+    """Calculate statistics for provided metrics data.
+    
+    This function mirrors the /calculate-metrics REST API endpoint functionality.
+    Takes metrics data and returns calculated statistics in JSON format for UI consumption.
+    
+    Args:
+        metrics_data_json: JSON string containing metrics data in the format:
+            {
+                "GPU Temperature (°C)": [
+                    {"timestamp": "2024-01-01T10:00:00", "value": 45.2},
+                    {"timestamp": "2024-01-01T10:01:00", "value": 46.1}
+                ]
+            }
+    
+    Returns:
+        JSON string with calculated statistics matching REST API format
+    """
+    try:
+        # Parse the JSON input
+        try:
+            metrics_data = json.loads(metrics_data_json)
+        except json.JSONDecodeError as e:
+            return _resp(f"Error: Invalid JSON format: {str(e)}", is_error=True)
+        
+        if not isinstance(metrics_data, dict):
+            return _resp("Error: Expected metrics_data to be a dictionary", is_error=True)
+        
+        calculated_metrics = {}
+        
+        # Use same logic as REST API /calculate-metrics endpoint
+        for label, data_points in metrics_data.items():
+            if not data_points:
+                calculated_metrics[label] = {
+                    "avg": None,
+                    "min": None,
+                    "max": None,
+                    "latest": None,
+                    "count": 0
+                }
+                continue
+                
+            # Extract values from data points (same logic as REST API)
+            values = []
+            for point in data_points:
+                if isinstance(point, dict) and "value" in point:
+                    try:
+                        value = float(point["value"])
+                        if not (pd.isna(value) or value != value):  # Check for NaN
+                            values.append(value)
+                    except (ValueError, TypeError):
+                        continue
+                        
+            if values:
+                calculated_metrics[label] = {
+                    "avg": sum(values) / len(values),
+                    "min": min(values),
+                    "max": max(values), 
+                    "latest": values[-1],
+                    "count": len(values)
+                }
+            else:
+                calculated_metrics[label] = {
+                    "avg": None,
+                    "min": None,
+                    "max": None,
+                    "latest": None,
+                    "count": 0
+                }
+        
+        # Return as JSON string (same format as REST API response)
+        result = {"calculated_metrics": calculated_metrics}
+        return _resp(json.dumps(result))
+        
+    except Exception as e:
+        return _resp(f"Error calculating metrics: {str(e)}", is_error=True)

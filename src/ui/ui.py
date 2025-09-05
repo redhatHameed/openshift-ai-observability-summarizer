@@ -9,7 +9,7 @@ import base64
 import matplotlib.pyplot as plt
 import io
 import time
-from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp, analyze_vllm_mcp
+from mcp_client_helper import get_namespaces_mcp, get_models_mcp, get_model_config_mcp, analyze_vllm_mcp, calculate_metrics_mcp
 
 # --- Config ---
 API_URL = os.getenv("METRICS_API_URL", "http://localhost:8000")
@@ -316,13 +316,9 @@ def get_metrics_data_and_list():
 
 
 def get_calculated_metrics_from_mcp(metric_data):
-    """Get calculated metrics from MCP backend"""
+    """Get calculated metrics from MCP calculate_metrics tool"""
     try:
-        response = requests.post(
-            f"{API_URL}/calculate-metrics", json={"metrics_data": metric_data}
-        )
-        response.raise_for_status()
-        return response.json()["calculated_metrics"]
+        return calculate_metrics_mcp(metric_data)
     except Exception as e:
         st.error(f"Error getting calculated metrics from MCP: {e}")
         return {}
