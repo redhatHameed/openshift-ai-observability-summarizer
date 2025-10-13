@@ -1,0 +1,423 @@
+# Device Configurations Template for ai-architecture-charts
+# Add this to helm/llm-service/values.yaml
+
+# =============================================================================
+# Device Configurations for Multiple Accelerator Types
+# =============================================================================
+
+deviceConfigs:
+  # ---------------------------------------------------------------------------
+  # NVIDIA GPU Configuration (Reference/Existing)
+  # ---------------------------------------------------------------------------
+  nvidia-gpu:
+    enabled: false
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+        memory: 16Gi
+        cpu: 8
+      requests:
+        nvidia.com/gpu: 1
+        memory: 8Gi
+        cpu: 4
+    nodeSelector:
+      accelerator: nvidia
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+    env:
+      - name: NVIDIA_VISIBLE_DEVICES
+        value: "all"
+      - name: NVIDIA_DRIVER_CAPABILITIES
+        value: "compute,utility"
+
+  # ---------------------------------------------------------------------------
+  # AMD GPU Configuration (Radeon Instinct MI Series)
+  # ---------------------------------------------------------------------------
+  amd-gpu:
+    enabled: false
+    resources:
+      limits:
+        amd.com/gpu: 1
+        memory: 16Gi
+        cpu: 8
+      requests:
+        amd.com/gpu: 1
+        memory: 8Gi
+        cpu: 4
+    nodeSelector:
+      accelerator: amd
+      # Alternative: node.kubernetes.io/instance-type: "gpu.amd.mi300"
+    tolerations:
+      - key: amd.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      - key: accelerator
+        operator: Equal
+        value: amd
+        effect: NoSchedule
+    env:
+      - name: ROCR_VISIBLE_DEVICES
+        value: "0"
+      - name: HSA_OVERRIDE_GFX_VERSION
+        value: "9.0.0"
+      - name: HIP_VISIBLE_DEVICES
+        value: "0"
+      - name: VLLM_USE_ROCM
+        value: "1"
+    volumeMounts:
+      - name: amd-gpu-device
+        mountPath: /dev/kfd
+      - name: amd-gpu-render
+        mountPath: /dev/dri
+    volumes:
+      - name: amd-gpu-device
+        hostPath:
+          path: /dev/kfd
+          type: CharDevice
+      - name: amd-gpu-render
+        hostPath:
+          path: /dev/dri
+          type: Directory
+
+  # ---------------------------------------------------------------------------
+  # AMD GPU Multi-GPU Configuration (4 GPUs)
+  # ---------------------------------------------------------------------------
+  amd-gpu-multi:
+    enabled: false
+    resources:
+      limits:
+        amd.com/gpu: 4
+        memory: 64Gi
+        cpu: 32
+      requests:
+        amd.com/gpu: 4
+        memory: 32Gi
+        cpu: 16
+    nodeSelector:
+      accelerator: amd
+      amd.com/gpu.count: "4"
+    tolerations:
+      - key: amd.com/gpu
+        operator: Exists
+        effect: NoSchedule
+    env:
+      - name: ROCR_VISIBLE_DEVICES
+        value: "0,1,2,3"
+      - name: HIP_VISIBLE_DEVICES
+        value: "0,1,2,3"
+      - name: VLLM_USE_ROCM
+        value: "1"
+      - name: VLLM_TENSOR_PARALLEL_SIZE
+        value: "4"
+    volumeMounts:
+      - name: amd-gpu-device
+        mountPath: /dev/kfd
+      - name: amd-gpu-render
+        mountPath: /dev/dri
+    volumes:
+      - name: amd-gpu-device
+        hostPath:
+          path: /dev/kfd
+          type: CharDevice
+      - name: amd-gpu-render
+        hostPath:
+          path: /dev/dri
+          type: Directory
+
+  # ---------------------------------------------------------------------------
+  # Intel GPU Configuration (Data Center GPU Max/Flex Series)
+  # ---------------------------------------------------------------------------
+  intel-gpu:
+    enabled: false
+    resources:
+      limits:
+        gpu.intel.com/i915: 1
+        memory: 16Gi
+        cpu: 8
+      requests:
+        gpu.intel.com/i915: 1
+        memory: 8Gi
+        cpu: 4
+    nodeSelector:
+      accelerator: intel-gpu
+      # Alternative: intel.feature.node.kubernetes.io/gpu: "true"
+    tolerations:
+      - key: gpu.intel.com/i915
+        operator: Exists
+        effect: NoSchedule
+      - key: accelerator
+        operator: Equal
+        value: intel-gpu
+        effect: NoSchedule
+    env:
+      - name: SYCL_DEVICE_FILTER
+        value: "gpu"
+      - name: ONEAPI_DEVICE_SELECTOR
+        value: "level_zero:gpu"
+      - name: ZE_ENABLE_VALIDATION_LAYER
+        value: "0"
+      - name: VLLM_USE_INTEL_GPU
+        value: "1"
+    volumeMounts:
+      - name: intel-gpu-device
+        mountPath: /dev/dri
+    volumes:
+      - name: intel-gpu-device
+        hostPath:
+          path: /dev/dri
+          type: Directory
+
+  # ---------------------------------------------------------------------------
+  # Intel HPU Configuration (Habana Gaudi AI Processors)
+  # ---------------------------------------------------------------------------
+  intel-hpu:
+    enabled: false
+    resources:
+      limits:
+        habana.ai/gaudi: 1
+        memory: 32Gi
+        cpu: 16
+      requests:
+        habana.ai/gaudi: 1
+        memory: 16Gi
+        cpu: 8
+    nodeSelector:
+      accelerator: habana-gaudi
+      # Alternative: habana.ai/gaudi-count: "8"
+    tolerations:
+      - key: habana.ai/gaudi
+        operator: Exists
+        effect: NoSchedule
+      - key: accelerator
+        operator: Equal
+        value: habana-gaudi
+        effect: NoSchedule
+    env:
+      - name: HABANA_VISIBLE_DEVICES
+        value: "0"
+      - name: HABANA_LOGS
+        value: /tmp/habana_logs
+      - name: LOG_LEVEL_ALL
+        value: "0"
+      - name: ENABLE_CONSOLE
+        value: "true"
+      - name: HABANA_SCAL_BIN_PATH
+        value: /usr/lib/habanalabs/scal.json
+      - name: PT_HPU_LAZY_MODE
+        value: "1"
+      - name: VLLM_USE_HABANA
+        value: "1"
+    volumeMounts:
+      - name: habana-drivers
+        mountPath: /dev/hl0
+      - name: habana-tools
+        mountPath: /opt/habanalabs
+        readOnly: true
+    volumes:
+      - name: habana-drivers
+        hostPath:
+          path: /dev/hl0
+          type: CharDevice
+      - name: habana-tools
+        hostPath:
+          path: /opt/habanalabs
+          type: Directory
+
+  # ---------------------------------------------------------------------------
+  # Intel HPU Multi-Card Configuration (Habana Gaudi 8-card)
+  # ---------------------------------------------------------------------------
+  intel-hpu-multi:
+    enabled: false
+    resources:
+      limits:
+        habana.ai/gaudi: 8
+        memory: 128Gi
+        cpu: 64
+      requests:
+        habana.ai/gaudi: 8
+        memory: 64Gi
+        cpu: 32
+    nodeSelector:
+      accelerator: habana-gaudi
+      habana.ai/gaudi-count: "8"
+    tolerations:
+      - key: habana.ai/gaudi
+        operator: Exists
+        effect: NoSchedule
+    env:
+      - name: HABANA_VISIBLE_DEVICES
+        value: "all"
+      - name: HABANA_LOGS
+        value: /tmp/habana_logs
+      - name: PT_HPU_LAZY_MODE
+        value: "1"
+      - name: VLLM_USE_HABANA
+        value: "1"
+      - name: VLLM_TENSOR_PARALLEL_SIZE
+        value: "8"
+    volumeMounts:
+      - name: habana-drivers
+        mountPath: /dev
+      - name: habana-tools
+        mountPath: /opt/habanalabs
+        readOnly: true
+    volumes:
+      - name: habana-drivers
+        hostPath:
+          path: /dev
+          type: Directory
+      - name: habana-tools
+        hostPath:
+          path: /opt/habanalabs
+          type: Directory
+
+  # ---------------------------------------------------------------------------
+  # CPU Configuration (Reference/Existing)
+  # ---------------------------------------------------------------------------
+  cpu:
+    enabled: false
+    resources:
+      limits:
+        memory: 16Gi
+        cpu: 8
+      requests:
+        memory: 8Gi
+        cpu: 4
+    nodeSelector: {}
+    tolerations: []
+    env:
+      - name: VLLM_CPU_ONLY
+        value: "1"
+
+# =============================================================================
+# Global Model Configuration Template
+# =============================================================================
+
+global:
+  models:
+    # Example: llama-3-2-3b-instruct on AMD GPU
+    llama-3-2-3b-instruct:
+      enabled: false
+      deviceConfig: amd-gpu  # Reference to deviceConfigs.amd-gpu
+      tolerations:
+        - key: amd.com/gpu
+          effect: NoSchedule
+          operator: Exists
+      # Model-specific overrides
+      resources:
+        limits:
+          amd.com/gpu: 1
+          memory: 12Gi
+      env:
+        - name: MODEL_NAME
+          value: meta-llama/Llama-3.2-3B-Instruct
+        - name: MAX_MODEL_LEN
+          value: "4096"
+
+    # Example: llama-3-1-8b-instruct on Intel GPU
+    llama-3-1-8b-instruct:
+      enabled: false
+      deviceConfig: intel-gpu  # Reference to deviceConfigs.intel-gpu
+      tolerations:
+        - key: gpu.intel.com/i915
+          effect: NoSchedule
+          operator: Exists
+      resources:
+        limits:
+          gpu.intel.com/i915: 1
+          memory: 16Gi
+
+    # Example: llama-3-3-70b-instruct on Intel HPU (multi-card)
+    llama-3-3-70b-instruct:
+      enabled: false
+      deviceConfig: intel-hpu-multi  # Reference to deviceConfigs.intel-hpu-multi
+      tolerations:
+        - key: habana.ai/gaudi
+          effect: NoSchedule
+          operator: Exists
+      resources:
+        limits:
+          habana.ai/gaudi: 8
+          memory: 128Gi
+      env:
+        - name: VLLM_TENSOR_PARALLEL_SIZE
+          value: "8"
+
+# =============================================================================
+# llm-service Configuration
+# =============================================================================
+
+llm-service:
+  # Device selection (choose one)
+  device: nvidia-gpu  # Options: nvidia-gpu, amd-gpu, intel-gpu, intel-hpu, cpu
+  
+  # Secret configuration for Hugging Face token
+  secret:
+    hf_token: ""
+  
+  # Raw deployment mode (bypass ServingRuntime)
+  rawDeploymentMode: false
+  
+  # Resource defaults (overridden by deviceConfig)
+  resources:
+    limits:
+      memory: 16Gi
+      cpu: 8
+    requests:
+      memory: 8Gi
+      cpu: 4
+
+# =============================================================================
+# llama-stack Configuration
+# =============================================================================
+
+llama-stack:
+  # Environment variables
+  env:
+    - name: VLLM_MAX_TOKENS
+      value: "4096"
+    - name: VLLM_API_TOKEN
+      value: fake
+    - name: OTEL_ENDPOINT
+      value: http://otel-collector-collector.observability-hub.svc.cluster.local:4318/v1/traces
+  
+  # Secrets for external APIs
+  secrets:
+    TAVILY_SEARCH_API_KEY: "your-key-here"
+  
+  # Raw deployment mode
+  rawDeploymentMode: false
+
+# =============================================================================
+# Usage Examples
+# =============================================================================
+
+# Example 1: Deploy llama-3-2-3b-instruct on AMD GPU
+# helm upgrade --install llm-service . \
+#   --namespace my-namespace \
+#   --set global.models.llama-3-2-3b-instruct.enabled=true \
+#   --set global.models.llama-3-2-3b-instruct.deviceConfig=amd-gpu \
+#   --set llm-service.device=amd-gpu
+
+# Example 2: Deploy llama-3-1-8b-instruct on Intel GPU
+# helm upgrade --install llm-service . \
+#   --namespace my-namespace \
+#   --set global.models.llama-3-1-8b-instruct.enabled=true \
+#   --set global.models.llama-3-1-8b-instruct.deviceConfig=intel-gpu \
+#   --set llm-service.device=intel-gpu
+
+# Example 3: Deploy llama-3-3-70b-instruct on Intel HPU (8 cards)
+# helm upgrade --install llm-service . \
+#   --namespace my-namespace \
+#   --set global.models.llama-3-3-70b-instruct.enabled=true \
+#   --set global.models.llama-3-3-70b-instruct.deviceConfig=intel-hpu-multi \
+#   --set llm-service.device=intel-hpu-multi
+
+# Example 4: Using Makefile (from observability-summarizer repo)
+# make install NAMESPACE=my-namespace \
+#   LLM=llama-3-2-3b-instruct \
+#   DEVICE=amd-gpu \
+#   LLM_TOLERATION="amd.com/gpu"
+

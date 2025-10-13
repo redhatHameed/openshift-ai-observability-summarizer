@@ -24,6 +24,8 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 
 - [Features](#features)
 - [GPU Monitoring](#gpu-monitoring)
+  - [Hardware Accelerator Support](#hardware-accelerator-support)
+  - [AMD & Intel Quick Start Guide](docs/AMD_INTEL_QUICKSTART.md)
 - [Architecture](#architecture)
 - [Getting Started](#getting-started)
 - [Usage](#usage)
@@ -99,6 +101,15 @@ Ask questions like: *"How many pods are running?"*, *"What's the GPU temperature
 ---
 
 ### GPU Monitoring
+
+### **Hardware Accelerator Support**
+Supports multiple GPU and accelerator platforms:
+- **NVIDIA GPUs**: CUDA-enabled GPUs with DCGM metrics
+- **AMD GPUs**: Radeon Instinct MI series (MI100, MI200, MI300) with ROCm
+- **Intel GPUs**: Data Center GPU Max/Flex series
+- **Intel HPUs**: Habana Gaudi AI processors (Gaudi, Gaudi2, Gaudi3)
+
+📖 **[GPU Deployment Guides](docs/GPU_GUIDES.md)** - Vendor-specific guides for all GPU types
 
 ### **DCGM Metrics Support**
 Automatically discovers and monitors:
@@ -208,8 +219,20 @@ make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct
 
 ### With GPU tolerations
 ```bash
+# NVIDIA GPU
 make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct LLM_TOLERATION="nvidia.com/gpu"
+
+# AMD GPU
+make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct LLM_TOLERATION="amd.com/gpu"
+
+# Intel GPU
+make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct LLM_TOLERATION="gpu.intel.com/i915"
+
+# Intel HPU (Habana Gaudi)
+make install NAMESPACE=your-namespace LLM=llama-3-2-3b-instruct LLM_TOLERATION="habana.ai/gaudi"
 ```
+
+📖 **[GPU Deployment Guides](docs/GPU_GUIDES.md)** - Complete guides for NVIDIA, AMD, and Intel GPUs/accelerators
 
 ### With safety models
 ```bash
