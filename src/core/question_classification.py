@@ -62,16 +62,6 @@ class QuestionClassifier:
     }
 
     @classmethod
-    def get_all_patterns(cls) -> Dict[QuestionType, List[str]]:
-        """
-        Get all question patterns.
-
-        Returns:
-            Dict mapping question types to their patterns
-        """
-        return cls.QUESTION_PATTERNS.copy()
-
-    @classmethod
     def classify_question(cls, question: str) -> QuestionType:
         """
         Classify a user question to determine the appropriate query type.
@@ -90,96 +80,6 @@ class QuestionClassifier:
                     return question_type
 
         return QuestionType.GENERAL
-
-    @classmethod
-    def get_confidence_score(cls, question: str, question_type: QuestionType) -> float:
-        """
-        Calculate confidence score for a classification.
-
-        Args:
-            question: The user's question
-            question_type: The classified question type
-
-        Returns:
-            float: Confidence score between 0.0 and 1.0
-        """
-        question_lower = question.lower()
-        patterns = cls.QUESTION_PATTERNS.get(question_type, [])
-        
-        if not patterns:
-            return 0.0
-        
-        matches = 0
-        for pattern in patterns:
-            if re.search(pattern, question_lower, re.IGNORECASE):
-                matches += 1
-        
-        return min(matches / len(patterns), 1.0)
-
-    @classmethod
-    def extract_key_concepts(cls, question: str) -> Dict[str, Any]:
-        """
-        Extract key concepts from a question.
-
-        Args:
-            question: The user's question
-
-        Returns:
-            Dict containing extracted concepts
-        """
-        question_lower = question.lower()
-        concepts = {
-            "time_indicators": [],
-            "service_indicators": [],
-            "metric_indicators": [],
-            "action_indicators": []
-        }
-
-        # Time indicators
-        time_patterns = [
-            r"last\s+(\d+)\s+(hour|hours|day|days|week|weeks)",
-            r"past\s+(\d+)\s+(hour|hours|day|days|week|weeks)",
-            r"(\d+)\s+(hour|hours|day|days|week|weeks)\s+ago",
-            r"today", r"yesterday", r"this\s+week", r"this\s+month"
-        ]
-        
-        for pattern in time_patterns:
-            matches = re.findall(pattern, question_lower)
-            concepts["time_indicators"].extend(matches)
-
-        # Service indicators
-        service_patterns = [
-            r"service[s]?\s+(\w+)",
-            r"(\w+)\s+service",
-            r"pod[s]?\s+(\w+)",
-            r"deployment[s]?\s+(\w+)"
-        ]
-        
-        for pattern in service_patterns:
-            matches = re.findall(pattern, question_lower)
-            concepts["service_indicators"].extend(matches)
-
-        # Metric indicators
-        metric_patterns = [
-            r"cpu", r"memory", r"disk", r"network", r"latency",
-            r"throughput", r"requests", r"response\s+time"
-        ]
-        
-        for pattern in metric_patterns:
-            if re.search(pattern, question_lower):
-                concepts["metric_indicators"].append(pattern)
-
-        # Action indicators
-        action_patterns = [
-            r"show", r"list", r"find", r"get", r"analyze",
-            r"compare", r"trend", r"summary"
-        ]
-        
-        for pattern in action_patterns:
-            if re.search(pattern, question_lower):
-                concepts["action_indicators"].append(pattern)
-
-        return concepts
 
 
 class TempoQuestionClassifier(QuestionClassifier):
@@ -211,34 +111,6 @@ class TempoQuestionClassifier(QuestionClassifier):
         else:
             # Default query for FAST_TRACES, SERVICE_ACTIVITY, DETAILED_ANALYSIS, and GENERAL
             return cls.QUERY_ALL_SERVICES
-
-
-class PrometheusQuestionClassifier(QuestionClassifier):
-    """Prometheus-specific question classifier with PromQL query generation."""
-
-    @classmethod
-    def get_promql_query(cls, question_type: QuestionType, question: str, 
-                        metric_name: Optional[str] = None) -> str:
-        """
-        Get the appropriate PromQL query based on the question type.
-
-        Args:
-            question_type: The classified question type
-            question: The original question
-            metric_name: Optional specific metric name
-
-        Returns:
-            str: The appropriate PromQL query
-        """
-        if not metric_name:
-            return "up"  # Default query
-        
-        if question_type == QuestionType.PERFORMANCE_ANALYSIS:
-            return f"rate({metric_name}[5m])"
-        elif question_type == QuestionType.ALERT_ANALYSIS:
-            return "ALERTS"
-        else:
-            return metric_name
 
 
 class TraceErrorDetector:
@@ -273,37 +145,3 @@ class TraceErrorDetector:
                 return True
 
         return False
-
-    @classmethod
-    def extract_error_details(cls, trace: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Extract detailed error information from a trace.
-
-        Args:
-            trace: Trace data dictionary
-
-        Returns:
-            Dict containing error details
-        """
-        trace_str = str(trace).lower()
-        error_details = {
-            "has_error": False,
-            "error_type": None,
-            "error_message": None,
-            "status_code": None
-        }
-
-        for pattern in cls.ERROR_PATTERNS:
-            match = re.search(pattern, trace_str, re.IGNORECASE)
-            if match:
-                error_details["has_error"] = True
-                error_details["error_type"] = pattern
-                error_details["error_message"] = match.group(0)
-                
-                # Extract HTTP status codes
-                status_match = re.search(r"http[:\s]*(\d{3})", trace_str)
-                if status_match:
-                    error_details["status_code"] = int(status_match.group(1))
-                break
-
-        return error_details
