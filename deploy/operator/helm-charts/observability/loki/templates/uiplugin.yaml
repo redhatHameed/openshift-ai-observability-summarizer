@@ -1,0 +1,24 @@
+{{- $namespace := .Values.global.namespace }}
+{{- $existingUIPlugin := lookup "observability.openshift.io/v1alpha1" "UIPlugin" $namespace .Values.uiPlugin.name }}
+{{- if and .Values.uiPlugin.enabled (not $existingUIPlugin) }}
+# UIPlugin for Logging Console
+# This enables the "Observe → Logs" menu in the OpenShift Console
+apiVersion: observability.openshift.io/v1alpha1
+kind: UIPlugin
+metadata:
+  name: {{ .Values.uiPlugin.name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "loki-stack.labels" . | nindent 4 }}
+spec:
+  type: Logging
+  logging:
+    {{- if .Values.uiPlugin.logging.timeout }}
+    timeout: {{ .Values.uiPlugin.logging.timeout }}
+    {{- end }}
+    {{- if .Values.uiPlugin.logging.lokiStack }}
+    lokiStack:
+      name: {{ .Values.uiPlugin.logging.lokiStack.name }}
+      namespace: {{ .Values.uiPlugin.logging.lokiStack.namespace }}
+    {{- end }}
+{{- end }}

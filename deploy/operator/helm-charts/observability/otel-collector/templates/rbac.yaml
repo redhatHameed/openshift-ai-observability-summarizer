@@ -1,0 +1,43 @@
+{{- $namespace := include "otel-collector.namespace" . }}
+{{- $clusterRoleName := printf "%s-%s" (include "otel-collector.clusterResourceName" .) .Values.rbac.clusterRole.name }}
+{{- $clusterRoleBindingName := printf "%s-tempostack-traces" (include "otel-collector.clusterResourceName" .) }}
+{{- $existingClusterRole := lookup "rbac.authorization.k8s.io/v1" "ClusterRole" "" $clusterRoleName }}
+{{- $existingClusterRoleBinding := lookup "rbac.authorization.k8s.io/v1" "ClusterRoleBinding" "" $clusterRoleBindingName }}
+{{- if and .Values.rbac.create (not $existingClusterRole) -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $clusterRoleName }}
+  labels:
+    {{- include "otel-collector.labels" . | nindent 4 }}
+  {{- with .Values.common.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+{{- with .Values.rbac.clusterRole.rules }}
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+{{- if and .Values.rbac.create (not $existingClusterRoleBinding) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $clusterRoleBindingName }}
+  labels:
+    {{- include "otel-collector.labels" . | nindent 4 }}
+  {{- with .Values.common.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $clusterRoleName }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "otel-collector.serviceAccountName" . }}
+    namespace: {{ $namespace }}
+{{- end }}

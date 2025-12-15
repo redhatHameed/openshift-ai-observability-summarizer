@@ -1,0 +1,17 @@
+{{- $namespace := include "tempo-stack.namespace" . }}
+{{- $existingUIPlugin := lookup "observability.openshift.io/v1alpha1" "UIPlugin" $namespace "distributed-tracing" }}
+{{- if not $existingUIPlugin }}
+# UIPlugin for Distributed Tracing Console
+# This enables the "Observe → Traces" menu in the OpenShift Console
+apiVersion: observability.openshift.io/v1alpha1
+kind: UIPlugin
+metadata:
+  name: distributed-tracing
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "tempo-stack.labels" . | nindent 4 }}
+spec:
+  type: DistributedTracing
+  distributedTracing:
+    timeout: 30s
+{{- end }}

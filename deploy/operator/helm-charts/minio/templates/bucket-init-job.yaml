@@ -1,0 +1,63 @@
+{{- $namespace := include "minio.namespace" . }}
+{{- $jobName := printf "%s-bucket-init" (include "minio.fullname" .) }}
+{{- if .Values.minio.buckets }}
+# Bucket initialization job - runs after MinIO deployment
+# Uses Helm hooks to ensure proper ordering and cleanup
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $jobName }}
+  namespace: {{ $namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "minio.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: bucket-init
+  annotations:
+    # Run after install/upgrade, delete old job first, keep on success for debugging
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "minio.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: bucket-init
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: bucket-init
+        image: minio/mc:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Waiting for MinIO to be ready..."
+          until mc alias set myminio http://{{ include "minio.fullname" . }}.{{ $namespace }}.svc.cluster.local:9000 {{ .Values.minio.secret.user }} {{ .Values.minio.secret.password }}; do
+            echo "Still waiting for MinIO..."
+            sleep 5
+          done
+          echo "MinIO is ready. Creating buckets..."
+          {{- range .Values.minio.buckets }}
+          echo "Creating bucket: {{ . }}"
+          mc mb myminio/{{ . }} || echo "Bucket {{ . }} may already exist"
+          {{- end }}
+          echo "Bucket creation completed successfully"
+        env:
+        - name: MC_CONFIG_DIR
+          value: /tmp/.mc
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+{{- end }}

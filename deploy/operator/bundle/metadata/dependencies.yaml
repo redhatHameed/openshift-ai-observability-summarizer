@@ -1,0 +1,33 @@
+# OLM Operator Dependencies
+# These operators will be automatically installed by OLM when this operator is installed.
+# OLM resolves these required APIs and installs operators that provide them.
+
+dependencies:
+  # Cluster Observability Operator - Korrel8r and UIPlugin
+  - type: olm.gvk
+    value:
+      group: observability.openshift.io
+      kind: UIPlugin
+      version: v1alpha1
+
+  # OpenTelemetry Operator - Trace collection
+  - type: olm.gvk
+    value:
+      group: opentelemetry.io
+      kind: OpenTelemetryCollector
+      version: v1beta1
+
+  # Tempo Operator - Distributed tracing
+  - type: olm.gvk
+    value:
+      group: tempo.grafana.com
+      kind: TempoStack
+      version: v1alpha1
+
+  # Loki Operator - Log storage
+  - type: olm.gvk
+    value:
+      group: loki.grafana.com
+      kind: LokiStack
+      version: v1
+

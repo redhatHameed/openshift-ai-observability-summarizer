@@ -1,0 +1,9 @@
+apiVersion: v2
+name: minio-observability-storage
+description: MinIO object storage for observability data (Tempo traces, Loki logs)
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+# No external dependencies - we create resources directly to control namespace
+

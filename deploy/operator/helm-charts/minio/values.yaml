@@ -1,0 +1,23 @@
+# MinIO chart for observability storage (Tempo traces, Loki logs)
+# Always deployed to observability-hub namespace
+
+# Naming
+nameOverride: ""
+fullnameOverride: "minio-observability-storage"
+
+minio:
+  # Root credentials
+  secret:
+    user: admin
+    password: minio123
+
+  # Service configuration
+  service:
+    enabled: true
+
+  # Bucket configuration - array of bucket names
+  buckets: ["tempo", "loki"]
+
+  # Security Context - Set to empty to let OpenShift assign automatically
+  podSecurityContext: {}
+  containerSecurityContext: {}

@@ -1,0 +1,60 @@
+{{- $clusterRoleName := printf "%s-tenant-logs" (include "loki-stack.clusterResourceName" .) }}
+{{- $namespace := include "loki-stack.namespace" . }}
+{{- $existingClusterRole := lookup "rbac.authorization.k8s.io/v1" "ClusterRole" "" $clusterRoleName }}
+{{- $existingClusterRoleBinding := lookup "rbac.authorization.k8s.io/v1" "ClusterRoleBinding" "" $clusterRoleName }}
+{{- if and .Values.rbac.create (not $existingClusterRole) }}
+# ClusterRole for Loki tenant access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $clusterRoleName }}
+  labels:
+    {{- include "loki-stack.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - 'loki.grafana.com'
+  resources:
+  - application
+  - infrastructure
+  - audit
+  resourceNames:
+  - logs
+  verbs:
+  - 'get'
+  - 'create'
+{{- end }}
+{{- if and .Values.rbac.create (not $existingClusterRoleBinding) }}
+---
+# ClusterRoleBinding for log collection service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $clusterRoleName }}
+  labels:
+    {{- include "loki-stack.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $clusterRoleName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.rbac.collector.serviceAccount.name }}
+  namespace: {{ .Values.rbac.collector.serviceAccount.namespace }}
+{{- if .Values.rbac.serviceAccounts.logForwarder.create }}
+- kind: ServiceAccount
+  name: {{ .Values.rbac.serviceAccounts.logForwarder.name }}
+  namespace: {{ $namespace }}
+{{- end }}
+{{- end }}
+{{- $existingLogForwarderSA := lookup "v1" "ServiceAccount" $namespace .Values.rbac.serviceAccounts.logForwarder.name }}
+{{- if and .Values.rbac.create .Values.rbac.serviceAccounts.logForwarder.create (not $existingLogForwarderSA) }}
+---
+# Service account for log forwarding
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.rbac.serviceAccounts.logForwarder.name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "loki-stack.labels" . | nindent 4 }}
+{{- end }}

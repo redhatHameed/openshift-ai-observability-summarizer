@@ -1,0 +1,44 @@
+{{- $namespace := include "minio.namespace" . }}
+{{- $apiRouteName := printf "%s-api" (include "minio.fullname" .) }}
+{{- $webuiRouteName := printf "%s-webui" (include "minio.fullname" .) }}
+{{- $existingApiRoute := lookup "route.openshift.io/v1" "Route" $namespace $apiRouteName }}
+{{- $existingWebuiRoute := lookup "route.openshift.io/v1" "Route" $namespace $webuiRouteName }}
+{{- if and .Values.minio.service.enabled (not $existingApiRoute) }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $apiRouteName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  to:
+    kind: Service
+    name: {{ include "minio.fullname" . }}
+    weight: 100
+  port:
+    targetPort: api
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
+{{- if and .Values.minio.service.enabled (not $existingWebuiRoute) }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $webuiRouteName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  to:
+    kind: Service
+    name: {{ include "minio.fullname" . }}
+    weight: 100
+  port:
+    targetPort: webui
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}

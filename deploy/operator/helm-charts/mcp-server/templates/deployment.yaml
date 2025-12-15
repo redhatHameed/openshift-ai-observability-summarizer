@@ -1,0 +1,154 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.deployment.name | default "mcp-server" }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.deployment.name | default "mcp-server" }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.deployment.name | default "mcp-server" }}
+    spec:
+      serviceAccountName: mcp-analyzer
+      restartPolicy: Always
+      containers:
+        - name: mcp-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            - name: MCP_HOST
+              value: "{{ .Values.env.MCP_HOST }}"
+            - name: MCP_PORT
+              value: "{{ .Values.env.MCP_PORT }}"
+            - name: MCP_TRANSPORT_PROTOCOL
+              value: "{{ .Values.env.MCP_TRANSPORT_PROTOCOL }}"
+            - name: PYTHON_LOG_LEVEL
+              value: "{{ .Values.env.PYTHON_LOG_LEVEL }}"
+            {{- if .Values.tls.enabled }}
+            - name: MCP_SSL_KEYFILE
+              value: "/run/secrets/tls/tls.key"
+            - name: MCP_SSL_CERTFILE
+              value: "/run/secrets/tls/tls.crt"
+            {{- end }}
+            - name: PROMETHEUS_URL
+              value: "{{ .Values.env.PROMETHEUS_URL }}"
+            - name: MAX_TIME_RANGE_DAYS
+              value: "{{ .Values.env.MAX_TIME_RANGE_DAYS }}"
+            - name: DEFAULT_TIME_RANGE_DAYS
+              value: "{{ .Values.env.DEFAULT_TIME_RANGE_DAYS }}"
+            - name: TEMPO_URL
+              value: "{{ .Values.env.TEMPO_URL }}"
+            - name: TEMPO_TENANT_ID
+              value: "{{ .Values.env.TEMPO_TENANT_ID }}"
+            - name: KORREL8R_ENABLED
+              value: "{{ .Values.env.KORREL8R_ENABLED }}"
+            - name: KORREL8R_URL
+              value: "{{ .Values.env.KORREL8R_URL }}"
+            - name: KORREL8R_TIMEOUT_SECONDS
+              value: "{{ .Values.env.KORREL8R_TIMEOUT_SECONDS }}"
+            - name: MAX_NUM_LOG_ROWS
+              value: "{{ .Values.env.MAX_NUM_LOG_ROWS }}"
+            - name: MAX_NUM_TRACE_SPANS
+              value: "{{ .Values.env.MAX_NUM_TRACE_SPANS }}"
+            - name: NAMESPACE
+              value: "{{ .Release.Namespace }}"
+            - name: THANOS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-analyzer
+                  key: token
+            - name: LLM_URL
+              value: "http://{{ .Values.LLM_PREDICTOR }}.{{ .Release.Namespace }}.svc.cluster.local:8080/v1/openai/v1"
+            - name: LLM_API_TOKEN
+              value: "{{ .Values.llm.apiToken }}"
+            {{- if .Values.llm.url }}
+            - name: LLAMA_STACK_URL
+              value: "{{ .Values.llm.url }}"
+            {{- else }}
+            - name: LLAMA_STACK_URL
+              value: "http://llamastack.{{ .Release.Namespace }}.svc.cluster.local:8321/v1/openai/v1"
+            {{- end }}
+            - name: MODEL_CONFIG
+              {{- if .Values.modelConfig }}
+              value: '{{ .Values.modelConfig | toJson }}'
+              {{- else }}
+              value: {{ .Files.Get "model-config.json" | fromJson | toJson | squote }}
+              {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                {{- if .Values.tls.enabled }}
+                - -k
+                - https://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
+                {{- else }}
+                - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
+                {{- end }}
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - -f
+                {{- if .Values.tls.enabled }}
+                - -k
+                - https://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
+                {{- else }}
+                - http://0.0.0.0:{{ .Values.env.MCP_PORT }}/health
+                {{- end }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 20
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: thanos-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            {{- if .Values.tls.enabled }}
+            - name: tls-certs
+              mountPath: /run/secrets/tls
+              readOnly: true
+            {{- end }}
+            {{- if .Values.trustedCA.enabled }}
+            - name: trusted-ca
+              mountPath: /etc/pki/ca-trust/extracted/pem
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: thanos-token
+          secret:
+            secretName: mcp-analyzer
+            defaultMode: 0440
+        {{- if .Values.tls.enabled }}
+        - name: tls-certs
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if .Values.trustedCA.enabled }}
+        - name: trusted-ca
+          configMap:
+            name: {{ .Values.trustedCA.configMapName | default "mcp-server-trusted-ca-bundle" }}
+            items:
+              - key: service-ca.crt
+                path: ca-bundle.crt
+        {{- end }}
+
+
