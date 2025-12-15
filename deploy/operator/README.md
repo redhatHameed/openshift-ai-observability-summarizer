@@ -32,25 +32,20 @@ This operator provides a single Custom Resource (`AIObservabilitySummarizer`) to
 - Cluster admin access
 - GPU node (for LLM deployment)
 
-### Required Operators (OLM Dependencies)
+### Required Operators (Auto-Installed by OLM)
 
-These operators are declared as OLM dependencies and must be installed **before** our operator:
+These operators are declared as OLM dependencies and will be **automatically installed** when this operator is installed:
 
-| Operator | Required For | Package Name |
-|----------|--------------|--------------|
-| **Tempo Operator** | Distributed tracing (TempoStack) | `tempo-product` |
-| **OpenTelemetry Operator** | Trace collection (OpenTelemetryCollector) | `opentelemetry-product` |
-| **OpenShift Serverless** | LLM deployment (InferenceService) | `serverless-operator` |
-| **Cluster Observability Operator** | Korrel8r (optional) | `cluster-observability-operator` |
+| Operator | Required API | Auto-Installed |
+|----------|--------------|----------------|
+| **Cluster Observability Operator** | `UIPlugin` | ✅ Yes |
+| **OpenTelemetry Operator** | `OpenTelemetryCollector` | ✅ Yes |
+| **Tempo Operator** | `TempoStack` | ✅ Yes |
+| **Loki Operator** | `LokiStack` | ✅ Yes |
 
-OLM will validate these dependencies during installation. If missing, OperatorHub will show which operators need to be installed first.
+OLM automatically resolves and installs operators that provide these APIs from the catalog.
 
-> **Note:** This operator creates *instances* of resources (TempoStack, OpenTelemetryCollector, InferenceService) but does not install the operators that provide these CRDs.
-
-To install prerequisites via Makefile:
-```bash
-make install-operators
-```
+> **Note:** OpenShift AI (RHOAI) for KServe/InferenceService is NOT auto-installed and must be installed separately if using local LLM deployment.
 
 ## Installation
 

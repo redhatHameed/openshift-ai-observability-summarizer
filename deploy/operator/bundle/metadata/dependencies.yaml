@@ -1,31 +1,33 @@
 # OLM Operator Dependencies
-# These operators must be installed before AI Observability Operator can be used.
-# OLM will validate these dependencies during installation.
+# These operators will be automatically installed by OLM when this operator is installed.
+# OLM resolves these required APIs and installs operators that provide them.
 
 dependencies:
-  # Tempo Operator - Required for distributed tracing (TempoStack CR)
-  - type: olm.package
+  # Cluster Observability Operator - Korrel8r and UIPlugin
+  - type: olm.gvk
     value:
-      packageName: tempo-product
-      version: ">=0.10.0"
+      group: observability.openshift.io
+      kind: UIPlugin
+      version: v1alpha1
 
-  # OpenTelemetry Operator - Required for trace collection (OpenTelemetryCollector CR)
-  - type: olm.package
+  # OpenTelemetry Operator - Trace collection
+  - type: olm.gvk
     value:
-      packageName: opentelemetry-product
-      version: ">=0.100.0"
+      group: opentelemetry.io
+      kind: OpenTelemetryCollector
+      version: v1beta1
 
-  # OpenShift Serverless/KServe - Required for LLM deployment (InferenceService CR)
-  # Note: Can be satisfied by either RHOAI or standalone KServe
-  - type: olm.package
+  # Tempo Operator - Distributed tracing
+  - type: olm.gvk
     value:
-      packageName: serverless-operator
-      version: ">=1.30.0"
+      group: tempo.grafana.com
+      kind: TempoStack
+      version: v1alpha1
 
-  # Cluster Observability Operator - Optional, for Korrel8r support
-  # Uncomment if Korrel8r is mandatory
-  # - type: olm.package
-  #   value:
-  #     packageName: cluster-observability-operator
-  #     version: ">=1.0.0"
+  # Loki Operator - Log storage
+  - type: olm.gvk
+    value:
+      group: loki.grafana.com
+      kind: LokiStack
+      version: v1
 
